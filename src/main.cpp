@@ -1,3 +1,4 @@
+#include <cstring>
 #define APP_VERSION "1.2.1"
 
 #include <iostream>
@@ -9,6 +10,10 @@
 #include "RtMidi.h"
 #include <toml++/toml.hpp>
 
+#include "../include/deamon.hpp"
+#include "../include/log.hpp"
+#include <thread>
+
 #ifdef __unix__
 
 #include <fcntl.h>
@@ -17,15 +22,11 @@
 
 #endif
 
-#ifdef __APPLE__
-
-#include <ApplicationServices/ApplicationServices.h>
-
-#endif
-
 bool done;
 bool verbose = false;
 static void finish(int ignore) { done = true; }
+
+void reload() { LOG_INFO("Reload function called."); }
 
 int listMidiIO() {
 
@@ -124,9 +125,6 @@ cleanup:
 	return 0;
 }
 
-// {{{ listenAndMap function for LINUX (unix)
-#ifdef __unix__
-
 void emit(int fd, int type, int code, int val) {
 	struct input_event ie;
 
@@ -150,6 +148,159 @@ int keyPress(int fd, std::vector<int> keyCodes) {
 		emit(fd, EV_KEY, keyCodes[i], 0);
 		emit(fd, EV_SYN, SYN_REPORT, 0);
 	}
+
+	return 0;
+}
+
+int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
+
+	// {{{ Create Variables For Reading Midi Input
+	RtMidiIn *midiin = new RtMidiIn();
+	std::vector<unsigned char> message;
+	int nBytes, i;
+	double stamp;
+	int fd;
+	// }}}
+
+	// {{{ Open Uinput File
+
+	fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+	struct uinput_setup usetup;
+
+	ioctl(fd, UI_SET_EVBIT, EV_KEY);
+	ioctl(fd, UI_SET_KEYBIT, 10);
+	for (ssize_t i = 1; i < KEY_MAX; i++)
+		ioctl(fd, UI_SET_KEYBIT, i);
+
+	memset(&usetup, 0, sizeof(usetup));
+	usetup.id.bustype = BUS_USB;
+	usetup.id.vendor = 0x1234;
+	usetup.id.product = 0x5678;
+	strcpy(usetup.name, "Midi to Key");
+
+	ioctl(fd, UI_DEV_SETUP, &usetup);
+	ioctl(fd, UI_DEV_CREATE);
+
+	sleep(1);
+
+	// }}}
+
+	struct conf_config {
+		std::optional<int> inputPort;
+	};
+
+	struct conf_mapping {
+		std::string name;
+		int byte0;
+		int byte1;
+		std::vector<int> key;
+	};
+
+	try {
+
+		// {{{ File parsing
+		toml::table parsedToml = toml::parse_file(configLocation);
+
+		// Config Section
+		conf_config configData;
+		configData.inputPort = parsedToml["config"]["inputPort"].value<int>();
+		if (!configData.inputPort.has_value()) {
+			LOG_ERROR("NO INPUT PORT VALUE PROVIDED!");
+			return 1;
+		}
+		LOG_INFO("PROVIDED MIDI INPUT PORT [", configData.inputPort.value(),
+				 "]");
+
+		// Mapping Section
+		std::vector<conf_mapping> parsedMappingData;
+
+		auto mappingTableArray = parsedToml["mapping"];
+
+		toml::array mappingData = *mappingTableArray.as_array();
+
+		for (const toml::node &mapping : mappingData) {
+			toml::table mappingData = *mapping.as_table();
+			conf_mapping parsedMapping;
+			parsedMapping.name = mappingData["name"].value_or("NAN");
+			parsedMapping.byte0 = mappingData["byte0"].value_or(128);
+			parsedMapping.byte1 = mappingData["byte1"].value_or(0);
+			std::vector<int> parsedKeys;
+			auto keyArray = mappingData["key"];
+			toml::array keyData = *keyArray.as_array();
+			for (const toml::node &keyValue : keyData) {
+				parsedKeys.push_back(keyValue.value_or(0));
+			}
+			parsedMapping.key = parsedKeys;
+
+			parsedMappingData.push_back(parsedMapping);
+		}
+
+		// }}}
+
+		// {{{ Midi Device And Map Loop
+
+		// Check if there any ports just in case
+		unsigned int nPorts = midiin->getPortCount();
+		if (nPorts == 0) {
+			LOG_ERROR("NO PORTS AVAILABLE!");
+			goto cleanup;
+		}
+		if (nPorts < configData.inputPort.value()) {
+			LOG_ERROR("PORT DOES NOT EXIST!");
+			LOG_INFO("SEE HELP PAGE!");
+		}
+
+		midiin->openPort(configData.inputPort.value() - 1);
+
+		midiin->ignoreTypes(false, false, false);
+
+		done = false;
+		(void)signal(SIGINT, finish);
+
+		// Periodically check input queue.
+		LOG_INFO("READING MIDI FROM PORT ", configData.inputPort.value());
+		while (daemon.IsRunning()) {
+			stamp = midiin->getMessage(&message);
+			nBytes = message.size();
+			for (i = 0; i < nBytes; i++) {
+				if (verbose)
+					LOG_INFO("BYTE [", i, "] [", (int)message[i], "] ");
+			}
+			if (nBytes > 0)
+				if (verbose)
+					LOG_INFO("STAMP [", stamp, "]");
+			if (nBytes > 0) {
+				for (int v = 0; v <= parsedMappingData.size() - 1; v++) {
+					conf_mapping newMapping = parsedMappingData[v];
+					if (newMapping.byte0 == (int)message[0] &&
+						newMapping.byte1 == (int)message[1]) {
+						if (verbose)
+							LOG_INFO("TRIGGERING MAPPING [", newMapping.name,
+									 "]");
+						keyPress(fd, newMapping.key);
+					}
+				}
+			}
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		// }}}
+
+	cleanup:
+		delete midiin;
+		ioctl(fd, UI_DEV_DESTROY);
+		close(fd);
+
+		return 0;
+
+	} catch (const toml::parse_error &err) {
+		LOG_ERROR("ERROR PARSING FILE [", err.source().path,
+				  "]: ", err.description(), " [", err.source().begin, "]");
+		return 1;
+	}
+
+	ioctl(fd, UI_DEV_DESTROY);
+	close(fd);
 
 	return 0;
 }
@@ -195,8 +346,6 @@ int listenAndMap(std::string configLocation) {
 		std::string name;
 		int byte0;
 		int byte1;
-		std::string type;
-		std::string command;
 		std::vector<int> key;
 	};
 
@@ -234,18 +383,13 @@ int listenAndMap(std::string configLocation) {
 			parsedMapping.name = mappingData["name"].value_or("NAN");
 			parsedMapping.byte0 = mappingData["byte0"].value_or(128);
 			parsedMapping.byte1 = mappingData["byte1"].value_or(0);
-			parsedMapping.type = mappingData["type"].value_or("command");
-			if (parsedMapping.type == "command") {
-				parsedMapping.command = mappingData["command"].value_or("0");
-			} else if (parsedMapping.type == "key") {
-				std::vector<int> parsedKeys;
-				auto keyArray = mappingData["key"];
-				toml::array keyData = *keyArray.as_array();
-				for (const toml::node &keyValue : keyData) {
-					parsedKeys.push_back(keyValue.value_or(0));
-				}
-				parsedMapping.key = parsedKeys;
+			std::vector<int> parsedKeys;
+			auto keyArray = mappingData["key"];
+			toml::array keyData = *keyArray.as_array();
+			for (const toml::node &keyValue : keyData) {
+				parsedKeys.push_back(keyValue.value_or(0));
 			}
+			parsedMapping.key = parsedKeys;
 
 			parsedMappingData.push_back(parsedMapping);
 		}
@@ -272,7 +416,6 @@ int listenAndMap(std::string configLocation) {
 		done = false;
 		(void)signal(SIGINT, finish);
 
-		// Periodically check input queue.
 		std::cout << "Reading MIDI from port " << configData.inputPort.value()
 				  << " -- quit with Ctrl-C.\n";
 		while (!done) {
@@ -295,12 +438,7 @@ int listenAndMap(std::string configLocation) {
 							std::cout << "Triggering mapping named: "
 									  << newMapping.name << std::endl
 									  << std::endl;
-						if (newMapping.type == "command") {
-							system((newMapping.command + " &").c_str());
-						}
-						if (newMapping.type == "key") {
-							keyPress(fd, newMapping.key);
-						}
+						keyPress(fd, newMapping.key);
 					}
 				}
 			}
@@ -327,199 +465,6 @@ int listenAndMap(std::string configLocation) {
 
 	return 0;
 }
-
-#endif
-
-// }}}
-
-// {{{ listenAndMap function for Apple
-#ifdef __APPLE__
-
-void keyPressDown(int key) {
-	CGEventSourceRef evSrc =
-		CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-	CGEventRef evt = CGEventCreateKeyboardEvent(evSrc, (CGKeyCode)key, true);
-	CGEventPost(kCGHIDEventTap, evt);
-	CFRelease(evt);
-	CFRelease(evSrc);
-
-	usleep(60);
-}
-
-void keyPressUp(int key) {
-	CGEventSourceRef src =
-		CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-	CGEventRef evt = CGEventCreateKeyboardEvent(src, (CGKeyCode)key, false);
-	CGEventPost(kCGHIDEventTap, evt);
-	CFRelease(evt);
-	CFRelease(src);
-
-	usleep(60);
-}
-
-void keyPress(std::vector<int> keys) {
-	for (int key : keys) {
-		keyPressDown(key);
-
-		// Caps Lock
-		if (key == 0x39) {
-			keyPressUp(key);
-		}
-	}
-	for (int key : keys) {
-		keyPressUp(key);
-	}
-}
-int listenAndMap(std::string configLocation) {
-
-	RtMidiIn *midiin = new RtMidiIn();
-	std::vector<unsigned char> message;
-	int nBytes, i;
-	double stamp;
-
-	struct conf_config {
-		std::optional<int> inputPort;
-	};
-
-	struct conf_mapping {
-		std::string name;
-		int byte0;
-		int byte1;
-		std::string type;
-		std::string command;
-		std::vector<int> key;
-	};
-
-	try {
-
-		// {{{ File parsing
-		toml::table parsedToml = toml::parse_file(configLocation);
-
-		// Config Section
-		conf_config configData;
-		configData.inputPort = parsedToml["config"]["inputPort"].value<int>();
-		if (!configData.inputPort.has_value()) {
-			std::cout << "No input value provided!\n";
-			return 1;
-		}
-		std::cout << "Provided midi input port: "
-				  << configData.inputPort.value() << std::endl
-				  << std::endl;
-
-		// Mapping Section
-		std::vector<conf_mapping> parsedMappingData;
-
-		auto mappingTableArray = parsedToml["mapping"];
-
-		toml::array mappingData = *mappingTableArray.as_array();
-
-		if (verbose)
-			std::cout << "Config Data provided: \n";
-		for (const toml::node &mapping : mappingData) {
-			toml::table mappingData = *mapping.as_table();
-
-			if (verbose)
-				std::cout << mappingData << std::endl << std::endl;
-
-			conf_mapping parsedMapping;
-			parsedMapping.name = mappingData["name"].value_or("NAN");
-			parsedMapping.byte0 = mappingData["byte0"].value_or(128);
-			parsedMapping.byte1 = mappingData["byte1"].value_or(0);
-			parsedMapping.type = mappingData["type"].value_or("command");
-			if (parsedMapping.type == "command") {
-				parsedMapping.command = mappingData["command"].value_or("0");
-			} else if (parsedMapping.type == "key") {
-				std::vector<int> parsedKeys;
-				auto keyArray = mappingData["key"];
-				toml::array keyData = *keyArray.as_array();
-				for (const toml::node &keyValue : keyData) {
-					parsedKeys.push_back(keyValue.value_or(0));
-				}
-				parsedMapping.key = parsedKeys;
-			}
-
-			parsedMappingData.push_back(parsedMapping);
-		}
-
-		// }}}
-
-		// {{{ Midi Device And Map Loop
-
-		// Check if there any ports just in case
-		unsigned int nPorts = midiin->getPortCount();
-		if (nPorts == 0) {
-			std::cout << "No ports available!\n";
-			goto cleanup;
-		}
-		if (nPorts < configData.inputPort.value()) {
-			std::cout << "Port does not exist!\n";
-			std::cout << "See help page (midirun {--help|h}) for more info.";
-		}
-
-		midiin->openPort(configData.inputPort.value() - 1);
-
-		midiin->ignoreTypes(false, false, false);
-
-		done = false;
-		(void)signal(SIGINT, finish);
-
-		// Periodically check input queue.
-		std::cout << "Reading MIDI from port " << configData.inputPort.value()
-				  << " -- quit with Ctrl-C.\n";
-		while (!done) {
-			stamp = midiin->getMessage(&message);
-			nBytes = message.size();
-			for (i = 0; i < nBytes; i++) {
-				if (verbose)
-					std::cout << "Byte " << i << " = " << (int)message[i]
-							  << ", ";
-			}
-			if (nBytes > 0)
-				if (verbose)
-					std::cout << "stamp = " << stamp << std::endl;
-			if (nBytes > 0) {
-				for (int v = 0; v <= parsedMappingData.size() - 1; v++) {
-					conf_mapping newMapping = parsedMappingData[v];
-					if (newMapping.byte0 == (int)message[0] &&
-						newMapping.byte1 == (int)message[1]) {
-						if (verbose)
-							std::cout << "Triggering mapping named: "
-									  << newMapping.name << std::endl
-									  << std::endl;
-						if (newMapping.type == "command") {
-#ifdef __unix__
-							system((newMapping.command + " &").c_str());
-#endif
-#ifdef __APPLE__
-							system((newMapping.command + " &").c_str());
-#endif
-						}
-						if (newMapping.type == "key") {
-							keyPress(newMapping.key);
-						}
-					}
-				}
-			}
-
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-		}
-		// }}}
-
-	cleanup:
-		delete midiin;
-
-		return 0;
-
-	} catch (const toml::parse_error &err) {
-		std::cerr << "Error parsing file '" << err.source().path << "':\n"
-				  << err.description() << "\n (" << err.source().begin << ")\n";
-		return 1;
-	}
-
-	return 0;
-}
-
-#endif
 
 // }}}
 
@@ -566,6 +511,8 @@ int main(int argc, char *argv[]) {
 		bool help = false;
 		bool listIO = false;
 		bool listen = false;
+		bool gui = false;
+		bool daemonize = false;
 		int listenPort;
 		std::string config;
 	} args;
@@ -589,6 +536,11 @@ int main(int argc, char *argv[]) {
 			args.listen = true;
 			args.listenPort = atoi(argv[i + 1]);
 			args.run = false;
+		} else if (arg == "--gui" || arg == "-g") {
+			args.run = false;
+			args.gui = true;
+		} else if (arg == "--daemon" || arg == "-d") {
+			args.daemonize = true;
 		}
 	}
 	if (args.verbose) {
@@ -621,11 +573,31 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (args.run) {
-		std::cout << "Config Path: " << args.config << std::endl;
-		listenAndMap(args.config);
-	}
 
-	// }}}
+		if (args.daemonize) {
+
+			// The Daemon class is a singleton to avoid be instantiate more than
+			// once
+			Daemon &daemon = Daemon::instance();
+			Daemon::setInstancePtr(&daemon);
+			// Daemon::writePidFile(PID_FILE_DIR);
+			LOG_INFO("CONFIG PATH [", args.config, "]");
+
+			// Set the reload function to be called in case of receiving a
+			// SIGHUP signal
+			daemon.setReloadFunction(reload);
+			ioctl(0, TIOCNOTTY, NULL);
+
+			listenAndMapDaemon(args.config, daemon);
+			// Daemon main loop
+
+			LOG_INFO("THE DAEMON PROCESS ENDED GRACEFULLY");
+		} else {
+			std::cout << "Config Path: " << args.config << std::endl;
+			listenAndMap(args.config);
+		}
+	}
+	/// }}}
 
 	return 0;
 }

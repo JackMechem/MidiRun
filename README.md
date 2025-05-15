@@ -10,7 +10,6 @@
 
 - [Support](#support)
   - [Linux](#support-linux)
-  - [MacOS](#support-macOS)
 - [Dependencies](#dependencies)
 - [Compiling and Installing](#comp-and-installing)
   - [Install Dependencies](#cai-1)
@@ -49,11 +48,6 @@
 
 - Full support for Wayland and X11
   - Key Codes can be found in the [**key codes**](#configuration-mapping-key-codes) section.
-
-##### :apple: MacOS <a name="support-macOS"></a>
-
-- Support for MacOS (Abandoned; may or may not work)
-  - Key Codes can be found [**here**](https://eastmanreference.com/complete-list-of-applescript-key-codes) or in the [**key codes**](#configuration-mapping-key-codes) section.
 
 ## Dependencies <a name="dependencies"></a>
 
