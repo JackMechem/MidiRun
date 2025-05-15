@@ -1,4 +1,6 @@
-# :musical_keyboard: MidiRun
+# :musical_keyboard: midirun
+
+# README OUT OF DATE
 
 ###### A small, simple, and minimal program for using any midi controller as a macro pad on Linux.
 
