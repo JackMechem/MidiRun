@@ -1,3 +1,5 @@
+#include "include/signal_state.hpp"
+#include <atomic>
 #include <cstring>
 #define APP_VERSION "1.2.1"
 
@@ -24,9 +26,13 @@
 
 bool done;
 bool verbose = false;
+std::atomic<bool> reloading = false;
 static void finish(int ignore) { done = true; }
 
-void reload() { LOG_INFO("Reload function called."); }
+void reload() {
+	LOG_INFO("Reload function called.");
+	reloading = true;
+}
 
 int listMidiIO() {
 
@@ -259,7 +265,7 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 
 		// Periodically check input queue.
 		LOG_INFO("READING MIDI FROM PORT ", configData.inputPort.value());
-		while (daemon.IsRunning()) {
+		while (daemon.IsRunning() && reloading == false) {
 			stamp = midiin->getMessage(&message);
 			nBytes = message.size();
 			for (i = 0; i < nBytes; i++) {
@@ -588,7 +594,10 @@ int main(int argc, char *argv[]) {
 			daemon.setReloadFunction(reload);
 			ioctl(0, TIOCNOTTY, NULL);
 
-			listenAndMapDaemon(args.config, daemon);
+			while (daemon.IsRunning()) {
+				reloading = false;
+				listenAndMapDaemon(args.config, daemon);
+			}
 			// Daemon main loop
 
 			LOG_INFO("THE DAEMON PROCESS ENDED GRACEFULLY");
