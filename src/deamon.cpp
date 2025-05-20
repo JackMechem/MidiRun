@@ -1,4 +1,5 @@
 #include "../include/deamon.hpp"
+#include "include/log.hpp"
 #include "include/signal_state.hpp"
 #include <csignal>
 #include <cstdio>
@@ -18,11 +19,11 @@ Daemon::Daemon() {
 	chdir("/");
 	std::ofstream pid_file("/tmp/midirun.pid");
 	if (!pid_file) {
-		std::cerr << "Failed to open PID file\n";
+		LOG_ERROR("Failed to open PID file");
 		return;
 	}
 	pid_file << getpid() << std::endl;
-	std::cout << "Wrote PID file with PID: " << getpid() << std::endl;
+	LOG_INFO("Wrote PID file with PID [", getpid(), "]");
 }
 
 void Daemon::setReloadFunction(std::function<void()> func) {

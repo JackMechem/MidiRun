@@ -61,28 +61,6 @@ int listMidiIO() {
 		std::cout << "  Input Port #" << i + 1 << ": " << portName << '\n';
 	}
 
-	// RtMidiOut constructor
-	try {
-		midiout = new RtMidiOut();
-	} catch (RtMidiError &error) {
-		error.printMessage();
-		exit(EXIT_FAILURE);
-	}
-
-	// Check outputs.
-	// Outputs are not used.
-	// nPorts = midiout->getPortCount();
-	// std::cout << "\nThere are " << nPorts << " MIDI output ports
-	// available.\n"; for (unsigned int i = 0; i < nPorts; i++) { 	try {
-	// portName = midiout->getPortName(i); 	} catch (RtMidiError &error) {
-	// 		error.printMessage();
-	// 		goto cleanup;
-	// 	}
-	// 	std::cout << "  Output Port #" << i + 1 << ": " << portName << '\n';
-	// }
-	// std::cout << '\n';
-
-	// Clean up
 cleanup:
 	delete midiin;
 	delete midiout;
@@ -264,7 +242,7 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 		(void)signal(SIGINT, finish);
 
 		// Periodically check input queue.
-		LOG_INFO("READING MIDI FROM PORT ", configData.inputPort.value());
+		LOG_INFO("READING MIDI FROM PORT [", configData.inputPort.value(), "]");
 		while (daemon.IsRunning() && reloading == false) {
 			stamp = midiin->getMessage(&message);
 			nBytes = message.size();
