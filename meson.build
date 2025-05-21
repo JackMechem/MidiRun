@@ -16,7 +16,6 @@ src = [
 ]
 
 executable('midirun', src, dependencies: deps, install: true)
-
 # Install systemd user service
 user_service = 'midirun.service'
 user_service_target_dir = join_paths(get_option('prefix'), 'lib', 'systemd', 'user')

@@ -61,6 +61,28 @@ int listMidiIO() {
 		std::cout << "  Input Port #" << i + 1 << ": " << portName << '\n';
 	}
 
+	// RtMidiOut constructor
+	try {
+		midiout = new RtMidiOut();
+	} catch (RtMidiError &error) {
+		error.printMessage();
+		exit(EXIT_FAILURE);
+	}
+
+	// Check outputs.
+	// Outputs are not used.
+	// nPorts = midiout->getPortCount();
+	// std::cout << "\nThere are " << nPorts << " MIDI output ports
+	// available.\n"; for (unsigned int i = 0; i < nPorts; i++) { 	try {
+	// portName = midiout->getPortName(i); 	} catch (RtMidiError &error) {
+	// 		error.printMessage();
+	// 		goto cleanup;
+	// 	}
+	// 	std::cout << "  Output Port #" << i + 1 << ": " << portName << '\n';
+	// }
+	// std::cout << '\n';
+
+	// Clean up
 cleanup:
 	delete midiin;
 	delete midiout;
@@ -242,7 +264,7 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 		(void)signal(SIGINT, finish);
 
 		// Periodically check input queue.
-		LOG_INFO("READING MIDI FROM PORT [", configData.inputPort.value(), "]");
+		LOG_INFO("READING MIDI FROM PORT ", configData.inputPort.value());
 		while (daemon.IsRunning() && reloading == false) {
 			stamp = midiin->getMessage(&message);
 			nBytes = message.size();
@@ -482,6 +504,10 @@ void helpMessage() {
 				 "$HOME/.config/midirun/config.toml\n";
 }
 
+bool is_running_under_systemd() {
+	return std::getenv("INVOCATION_ID") != nullptr;
+}
+
 int main(int argc, char *argv[]) {
 
 	// {{{ Get Home Directory ()
@@ -495,7 +521,6 @@ int main(int argc, char *argv[]) {
 		bool help = false;
 		bool listIO = false;
 		bool listen = false;
-		bool gui = false;
 		bool daemonize = false;
 		int listenPort;
 		std::string config;
@@ -520,9 +545,6 @@ int main(int argc, char *argv[]) {
 			args.listen = true;
 			args.listenPort = atoi(argv[i + 1]);
 			args.run = false;
-		} else if (arg == "--gui" || arg == "-g") {
-			args.run = false;
-			args.gui = true;
 		} else if (arg == "--daemon" || arg == "-d") {
 			args.daemonize = true;
 		}
@@ -559,6 +581,11 @@ int main(int argc, char *argv[]) {
 	if (args.run) {
 
 		if (args.daemonize) {
+
+			if (!is_running_under_systemd()) {
+				std::cerr << "Run as a system service!\n";
+				return 1;
+			}
 
 			// The Daemon class is a singleton to avoid be instantiate more than
 			// once

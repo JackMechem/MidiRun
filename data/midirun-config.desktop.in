@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Midirun Config
+Comment=Configure MIDI input mapping
+Exec=@execpath@
+Terminal=false
+Categories=Utility;AudioVideo;
+StartupNotify=true

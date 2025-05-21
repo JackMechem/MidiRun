@@ -4,7 +4,7 @@
 #include <functional>
 #include <unistd.h>
 
-#define PID_FILE_DIR "/run/midirundae"
+#define PID_FILE_DIR "/tmp/midirundae"
 
 class Daemon {
   public:
