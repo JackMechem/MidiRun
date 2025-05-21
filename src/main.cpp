@@ -14,15 +14,10 @@
 
 #include "../include/deamon.hpp"
 #include "../include/log.hpp"
-#include <thread>
-
-#ifdef __unix__
 
 #include <fcntl.h>
 #include <linux/input.h>
 #include <linux/uinput.h>
-
-#endif
 
 bool done;
 bool verbose = false;
@@ -37,7 +32,6 @@ void reload() {
 int listMidiIO() {
 
 	RtMidiIn *midiin = 0;
-	RtMidiOut *midiout = 0;
 
 	// RtMidiIn constructor
 	try {
@@ -61,31 +55,8 @@ int listMidiIO() {
 		std::cout << "  Input Port #" << i + 1 << ": " << portName << '\n';
 	}
 
-	// RtMidiOut constructor
-	try {
-		midiout = new RtMidiOut();
-	} catch (RtMidiError &error) {
-		error.printMessage();
-		exit(EXIT_FAILURE);
-	}
-
-	// Check outputs.
-	// Outputs are not used.
-	// nPorts = midiout->getPortCount();
-	// std::cout << "\nThere are " << nPorts << " MIDI output ports
-	// available.\n"; for (unsigned int i = 0; i < nPorts; i++) { 	try {
-	// portName = midiout->getPortName(i); 	} catch (RtMidiError &error) {
-	// 		error.printMessage();
-	// 		goto cleanup;
-	// 	}
-	// 	std::cout << "  Output Port #" << i + 1 << ": " << portName << '\n';
-	// }
-	// std::cout << '\n';
-
-	// Clean up
 cleanup:
 	delete midiin;
-	delete midiout;
 	return 0;
 }
 
@@ -160,15 +131,14 @@ int keyPress(int fd, std::vector<int> keyCodes) {
 
 int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 
-	// {{{ Create Variables For Reading Midi Input
+	// Create Variables For Reading Midi Input
 	RtMidiIn *midiin = new RtMidiIn();
 	std::vector<unsigned char> message;
 	int nBytes, i;
 	double stamp;
 	int fd;
-	// }}}
 
-	// {{{ Open Uinput File
+	// Open Uinput File
 
 	fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
 	struct uinput_setup usetup;
@@ -189,8 +159,6 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 
 	sleep(1);
 
-	// }}}
-
 	struct conf_config {
 		std::optional<int> inputPort;
 	};
@@ -204,7 +172,7 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 
 	try {
 
-		// {{{ File parsing
+		// File parsing
 		toml::table parsedToml = toml::parse_file(configLocation);
 
 		// Config Section
@@ -241,9 +209,7 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 			parsedMappingData.push_back(parsedMapping);
 		}
 
-		// }}}
-
-		// {{{ Midi Device And Map Loop
+		// Midi Device And Map Loop
 
 		// Check if there any ports just in case
 		unsigned int nPorts = midiin->getPortCount();
@@ -290,7 +256,6 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		}
-		// }}}
 
 	cleanup:
 		delete midiin;
@@ -313,15 +278,14 @@ int listenAndMapDaemon(std::string configLocation, Daemon &daemon) {
 
 int listenAndMap(std::string configLocation) {
 
-	// {{{ Create Variables For Reading Midi Input
+	// Create Variables For Reading Midi Input
 	RtMidiIn *midiin = new RtMidiIn();
 	std::vector<unsigned char> message;
 	int nBytes, i;
 	double stamp;
 	int fd;
-	// }}}
 
-	// {{{ Open Uinput File
+	// Open Uinput File
 
 	fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
 	struct uinput_setup usetup;
@@ -342,8 +306,6 @@ int listenAndMap(std::string configLocation) {
 
 	sleep(1);
 
-	// }}}
-
 	struct conf_config {
 		std::optional<int> inputPort;
 	};
@@ -357,7 +319,7 @@ int listenAndMap(std::string configLocation) {
 
 	try {
 
-		// {{{ File parsing
+		// File parsing
 		toml::table parsedToml = toml::parse_file(configLocation);
 
 		// Config Section
@@ -400,9 +362,7 @@ int listenAndMap(std::string configLocation) {
 			parsedMappingData.push_back(parsedMapping);
 		}
 
-		// }}}
-
-		// {{{ Midi Device And Map Loop
+		// Midi Device And Map Loop
 
 		// Check if there any ports just in case
 		unsigned int nPorts = midiin->getPortCount();
@@ -451,7 +411,6 @@ int listenAndMap(std::string configLocation) {
 
 			std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		}
-		// }}}
 
 	cleanup:
 		delete midiin;
@@ -472,8 +431,6 @@ int listenAndMap(std::string configLocation) {
 	return 0;
 }
 
-// }}}
-
 std::string GetEnv(const std::string &var) {
 	const char *val = std::getenv(var.c_str());
 	if (val == nullptr) {
@@ -485,8 +442,6 @@ std::string GetEnv(const std::string &var) {
 
 void helpMessage() {
 	std::cout << "MidiRun - Version " << APP_VERSION << "\n";
-	std::cout << "Made by Jack Mechem -- Project Github: "
-				 "https://github.com/JackMechem/midirun \n\n";
 	std::cout << "Usage:\n";
 	std::cout << "  Help and List:\n";
 	std::cout << "    midirun {--help|-h} | Shows Help Page\n";
@@ -510,10 +465,9 @@ bool is_running_under_systemd() {
 
 int main(int argc, char *argv[]) {
 
-	// {{{ Get Home Directory ()
+	// Get Home Directory ()
 	struct passwd *pw = getpwuid(getuid());
 	const std::string homedir = pw->pw_dir;
-	// }}}
 
 	struct {
 		bool run = true;
@@ -528,7 +482,7 @@ int main(int argc, char *argv[]) {
 
 	args.config = homedir + "/.config/midirun/config.toml";
 
-	// {{{ Loop Through Command Args
+	// Loop Through Command Args
 	for (int i = 0; i < argc; i++) {
 		std::string arg = argv[i];
 		if (arg == "--verbose" || arg == "-v") {
@@ -591,7 +545,6 @@ int main(int argc, char *argv[]) {
 			// once
 			Daemon &daemon = Daemon::instance();
 			Daemon::setInstancePtr(&daemon);
-			// Daemon::writePidFile(PID_FILE_DIR);
 			LOG_INFO("CONFIG PATH [", args.config, "]");
 
 			// Set the reload function to be called in case of receiving a
@@ -611,7 +564,6 @@ int main(int argc, char *argv[]) {
 			listenAndMap(args.config);
 		}
 	}
-	/// }}}
 
 	return 0;
 }
