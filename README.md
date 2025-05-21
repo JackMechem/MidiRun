@@ -55,7 +55,7 @@ cd MidiRun
 ```
 meson setup build
 meson compile -C build
-meson install -C
+meson install -C build
 ```
 
 ### Permissions for `/dev/uinput`
