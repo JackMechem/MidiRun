@@ -1,4 +1,4 @@
-# :musical_keyboard: MidiRun
+# :musical_keyboard: Midirun
 
 _Program and daemon for using any midi controller as a macro pad on Linux._
 
