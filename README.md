@@ -2,7 +2,9 @@
 
 _Program and daemon for using any midi controller as a macro pad on Linux._
 
-### :star: See [Midirun Config](https://github.com/JackMechem/midirun-config) for GUI configuration tool
+### :star: See [Midirun Config](https://github.com/JackMechem/midirun-config) for GUI configuration tool!
+
+![demo](./media/demo.png)
 
 ## :desktop_computer: Support <a name="support"></a>
 
