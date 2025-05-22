@@ -1,6 +1,6 @@
 # :musical_keyboard: Midirun
 
-**version 1.3.0**
+**v0.2.0-beta**
 _Program and daemon for using any midi controller as a macro pad on Linux._
 
 ### :star: See [Midirun Config](https://github.com/JackMechem/midirun-config) for GUI configuration tool!
