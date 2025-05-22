@@ -1,4 +1,4 @@
-project('midirun', 'cpp', 'c', version: '1.2.1')
+project('midirun', 'cpp', 'c', version: '1.3.0')
 
 gtk = dependency('gtkmm-4.0', version: '>=4.0.0')
 toml = dependency('tomlplusplus')
