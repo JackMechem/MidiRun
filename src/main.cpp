@@ -1,7 +1,7 @@
 #include "include/signal_state.hpp"
 #include <atomic>
 #include <cstring>
-#define APP_VERSION "0.2.0-beta"
+#define APP_VERSION "0.2.1-beta"
 
 #include <iostream>
 #include <pwd.h>
