@@ -20,6 +20,15 @@ _Program and daemon for using any midi controller as a macro pad on Linux._
 - [**toml++ (tomlplusplus)**](https://archlinux.org/packages/extra/x86_64/tomlplusplus/)
 - [**meson**](https://mesonbuild.com/)
 
+## :arrow_down: Installing From AUR
+
+```
+yay -Syy midirun
+
+# Logout and login to apply user group
+sudo usermod -aG input $USER
+```
+
 ## :electric_plug: Compiling and Installing <a name="comp-and-installing"></a>
 
 ### 1. Install Dependencies <a name="cai-1"></a>
@@ -63,13 +72,13 @@ meson install -C build
 
 ### Permissions for `/dev/uinput`
 
-MidiRun needs read and write access to `/dev/uinput` to simulate key strokes. Creating a udev rule for the user group `input` allows any user in that group to access it.
+MidiRun needs read and write access to `/dev/uinput` to simulate key strokes. This script creates a udev rule and gives users in the input group read and write access to `/dev/uinput`.
 
 ```
 ./create_udev_rule.sh
 
-# Log out and log back in to apply
-sudo usermod -aG input user_name
+# Logout and login to apply user group
+sudo usermod -aG input $USER
 ```
 
 ## :wrench: Usage <a name="usage"></a>
